@@ -481,8 +481,8 @@ class DKBRobo(object):
                     # login got confirmed get overview and parse data
                     soup_new = self.get_financial_statement()
                     self.account_dic = self.parse_overview(soup_new)
-        except mechanicalsoup.utils.LinkNotFoundError:
-            print('login failed: LinkNotFoundError')
+        except mechanicalsoup.utils.LinkNotFoundError as e :
+            raise DKBRoboError('login failed: LinkNotFoundError') from e
 
     def ctan_check(self, _soup):
         """ input of chiptan during login """
