@@ -1,41 +1,27 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-""" dkb internet banking automation library """
 
-from __future__ import print_function
-import sys
 import os
 import csv
 import random
 import time
-from datetime import datetime
 import re
 from string import digits, ascii_letters
-try:
-    from urllib import parse
-except BaseException:
-    import urlparse as parse
+from urllib import parse
+from http import cookiejar
+import logging
+
 import mechanicalsoup
 
-if sys.version_info > (3, 0):
-    import http.cookiejar as cookielib
-    import importlib
-    importlib.reload(sys)
-else:
-    import cookielib # pylint: disable=E0401
-    # pylint: disable=E0602, E1101
-    reload(sys)
-    sys.setdefaultencoding('utf8')
+
+logger = logging.getLogger(__name__)
+
+
+class DKBRoboError(Exception):
+    ...
 
 def generate_random_string(length):
     """ generate random string to be used as name """
     char_set = digits + ascii_letters
     return ''.join(random.choice(char_set) for _ in range(length))
-
-def print_debug(debug, text):
-    """ little helper to print debug messages """
-    if debug:
-        print('{0}: {1}'.format(datetime.now(), text))
 
 class DKBRobo(object):
     """ dkb_robo class """
@@ -47,13 +33,11 @@ class DKBRobo(object):
     last_login = None
     account_dic = {}
     tan_insert = False
-    debug = False
 
-    def __init__(self, dkb_user=None, dkb_password=None, tan_insert=False, debug=False):
+    def __init__(self, dkb_user=None, dkb_password=None, tan_insert=False):
         self.dkb_user = dkb_user
         self.dkb_password = dkb_password
         self.tan_insert = tan_insert
-        self.debug = debug
 
     def __enter__(self):
         """
@@ -80,7 +64,7 @@ class DKBRobo(object):
             date_from       - transactions starting form
             date_to         - end date
         """
-        print_debug(self.debug, 'DKBRobo.get_account_transactions({0}: {1}/{2})\n'.format(transaction_url, date_from, date_to))
+        logger.debug( 'DKBRobo.get_account_transactions({0}: {1}/{2})\n'.format(transaction_url, date_from, date_to))
         self.dkb_br.open(transaction_url)
         self.dkb_br.select_form('#form1615473160_1')
 
@@ -102,7 +86,7 @@ class DKBRobo(object):
             date_from       - transactions starting form
             date_to         - end date
         """
-        print_debug(self.debug, 'DKBRobo.get_creditcard_transactions({0}: {1}/{2})\n'.format(transaction_url, date_from, date_to))
+        logger.debug( 'DKBRobo.get_creditcard_transactions({0}: {1}/{2})\n'.format(transaction_url, date_from, date_to))
         # get credit card transaction form yesterday
         self.dkb_br.open(transaction_url)
         self.dkb_br.select_form('#form1579108072_1')
@@ -125,7 +109,7 @@ class DKBRobo(object):
         returns:
             dictionary of the accounts and limits
         """
-        print_debug(self.debug, 'DKBRobo.get_credit_limits()\n')
+        logger.debug( 'DKBRobo.get_credit_limits()\n')
         limit_url = self.base_url + '/DkbTransactionBanking/content/service/CreditcardLimit.xhtml'
         self.dkb_br.open(limit_url)
 
@@ -179,7 +163,7 @@ class DKBRobo(object):
         returns:
             dictionary of the documents
         """
-        print_debug(self.debug, 'DKBRobo.get_document_links({0})\n'.format(url))
+        logger.debug( 'DKBRobo.get_document_links({0})\n'.format(url))
         document_dic = {}
 
         # set download filter if there is a need to do so
@@ -229,11 +213,11 @@ class DKBRobo(object):
         returns:
             http response code
         """
-        print_debug(self.debug, 'DKBRobo.get_document({0})\n'.format(url))
+        logger.debug( 'DKBRobo.get_document({0})\n'.format(url))
 
         # create directory if not existing
         if not os.path.exists(path):
-            print_debug(self.debug, 'create directory {0}\n'.format(path))
+            logger.debug( 'create directory {0}\n'.format(path))
             os.makedirs(path)
 
         # fetch file
@@ -244,7 +228,7 @@ class DKBRobo(object):
         if "Content-Disposition" in response.headers.keys():
             fname = re.findall("filename=(.+)", response.headers["Content-Disposition"])[0]
             # dump content to file
-            print_debug(self.debug, 'writing to {0}/{1}\n'.format(path, fname))
+            logger.debug( 'writing to {0}/{1}\n'.format(path, fname))
             pdf_file = open('{0}/{1}'.format(path, fname), 'wb')
             pdf_file.write(response.content)
             pdf_file.close()
@@ -265,7 +249,7 @@ class DKBRobo(object):
         returns:
             dictionary of exemption orders
         """
-        print_debug(self.debug, 'DKBRobo.get_exemption_order()\n')
+        logger.debug( 'DKBRobo.get_exemption_order()\n')
         exo_url = self.base_url + '/DkbTransactionBanking/content/personaldata/ExemptionOrder/ExemptionOrderOverview.xhtml'
         self.dkb_br.open(exo_url)
 
@@ -315,7 +299,7 @@ class DKBRobo(object):
 
     def get_financial_statement(self):
         """ get finanical statement """
-        print_debug(self.debug, 'DKBRobo.get_financial_statement()\n')
+        logger.debug( 'DKBRobo.get_financial_statement()\n')
 
         self.dkb_br.open(self.base_url + '/DkbTransactionBanking/content/banking/financialstatus/FinancialComposite/FinancialStatus.xhtml?$event=init')
         soup = self.dkb_br.get_current_page()
@@ -330,7 +314,7 @@ class DKBRobo(object):
         returns:
             points - dkb points
         """
-        print_debug(self.debug, 'DKBRobo.get_points()\n')
+        logger.debug( 'DKBRobo.get_points()\n')
         point_url = self.base_url + '/DkbTransactionBanking/content/FavorableWorld/Overview.xhtml?$event=init'
         self.dkb_br.open(point_url)
 
@@ -370,7 +354,7 @@ class DKBRobo(object):
         returns:
             so_dic = standing order dic
         """
-        print_debug(self.debug, 'DKBRobo.get_standing_orders()\n')
+        logger.debug( 'DKBRobo.get_standing_orders()\n')
         so_url = self.base_url + '/banking/finanzstatus/dauerauftraege?$event=infoStandingOrder'
         self.dkb_br.open(so_url)
 
@@ -421,7 +405,7 @@ class DKBRobo(object):
             - amount - amount
             - text   - test
         """
-        print_debug(self.debug, 'DKBRobo.get_account_transactions({0}/{1}: {2}/{3})\n'.format(transaction_url, atype, date_from, date_to))
+        logger.debug( 'DKBRobo.get_account_transactions({0}/{1}: {2}/{3})\n'.format(transaction_url, atype, date_from, date_to))
         transaction_list = []
         if atype == 'account':
             transaction_list = self.get_account_transactions(transaction_url, date_from, date_to)
@@ -449,7 +433,7 @@ class DKBRobo(object):
             - link to details
             - link to transactions
         """
-        print_debug(self.debug, 'DKBRobo.login()\n')
+        logger.debug( 'DKBRobo.login()\n')
 
         # login url
         login_url = self.base_url + '/' + 'banking'
@@ -469,8 +453,7 @@ class DKBRobo(object):
 
             # catch login error
             if soup.find("div", attrs={'class':'clearfix module text errorMessage'}):
-                print('Login failed! Aborting...')
-                sys.exit(0)
+                raise DKBRoboError('Login failed')
 
             # catch generic notices
             if soup.find("form", attrs={'id':'genericNoticeForm'}):
@@ -490,33 +473,32 @@ class DKBRobo(object):
                 if soup.find('h1').text.strip() == 'Anmeldung bestätigen':
                     if self.tan_insert:
                         # chiptan input
-                        login_confirmed = self.ctan_check(soup)
+                        self.ctan_check(soup)
                     else:
                         # app confirmation needed to continue
-                        login_confirmed = self.login_confirm()
+                        self.login_confirm()
 
-                    if login_confirmed:
-                        # login got confirmed get overview and parse data
-                        soup_new = self.get_financial_statement()
-                        self.account_dic = self.parse_overview(soup_new)
+                    # login got confirmed get overview and parse data
+                    soup_new = self.get_financial_statement()
+                    self.account_dic = self.parse_overview(soup_new)
         except mechanicalsoup.utils.LinkNotFoundError:
             print('login failed: LinkNotFoundError')
 
     def ctan_check(self, _soup):
         """ input of chiptan during login """
-        print_debug(self.debug, 'DKBRobo.ctan_check()\n')
+        logger.debug( 'DKBRobo.ctan_check()\n')
 
         try:
             self.dkb_br.select_form('form[name="confirmForm"]')
             self.dkb_br["$event"] = 'tanVerification'
         except BaseException as _err:
-            print_debug(self.debug, 'confirmForm not found\n')
+            logger.debug( 'confirmForm not found\n')
 
         try:
             self.dkb_br.select_form('form[name="next"]')
             self.dkb_br["$event"] = 'next'
         except BaseException:
-            print_debug(self.debug, 'nextForm not found\n')
+            logger.debug( 'nextForm not found\n')
 
         # open page to insert tan
         self.dkb_br.submit_selected()
@@ -544,14 +526,10 @@ class DKBRobo(object):
 
         # catch tan error
         if soup.find("div", attrs={'class':'clearfix module text errorMessage'}):
-            print('Login failed due to wrong tan! Aborting...')
-            sys.exit(0)
-        else:
-            print_debug(self.debug, 'TAN is correct...\n')
-            login_confirm = True
+            raise DKBRoboError('Login failed due to wrong TAN')
 
-        print_debug(self.debug, 'DKBRobo.ctan_check() ended with :{0}\n'.format(login_confirm))
-        return login_confirm
+        logger.debug( 'TAN is correct...\n')
+        logger.debug( 'DKBRobo.ctan_check() ended with :{0}\n'.format(login_confirm))
 
     def login_confirm(self):
         """ confirm login to dkb via app
@@ -559,7 +537,7 @@ class DKBRobo(object):
         returns:
             true/false - depending if login has been confirmed
         """
-        print_debug(self.debug, 'DKBRobo.login_confirm()\n')
+        logger.debug( 'DKBRobo.login_confirm()\n')
         print('check your banking app and confirm login...')
 
         try:
@@ -570,37 +548,29 @@ class DKBRobo(object):
             # fallback
             xsrf_token = generate_random_string(25)
 
-        # timestamp in miliseconds for py3 and py2
-        try:
-            poll_id = int(datetime.utcnow().timestamp()*1e3)
-        except BaseException:
-            poll_id = int(round(time.time() * 1000))
-
-        # poll url
+        start_time = int(round(time.time() * 1000))
         poll_url = self.base_url + '/DkbTransactionBanking/content/LoginWithBoundDevice/LoginWithBoundDeviceProcess/mfaConfirmLogin.xhtml?$event=pollingVerification&$ignore.request=true'
-        login_confirmed = False
-        while not login_confirmed:
-            poll_id += 1
+
+        for poll_id in range(120):
             # add id to pollurl
-            url = poll_url + '&_=' + str(poll_id)
+            url = poll_url + '&_=' + str(poll_id+start_time)
             result = self.dkb_br.open(url).json()
             if 'state' in result:
-                print_debug(self.debug, 'poll(id: {0} status: {1}\n'.format(poll_id, result['state']))
+                logger.debug( 'poll(id: {0} status: {1}\n'.format(poll_id, result['state']))
                 if result['state'] == 'PROCESSED':
-                    print_debug(self.debug, 'session got confirmed...\n')
-                    login_confirmed = True
+                    logger.debug( 'session got confirmed...\n')
+                    break
                 elif result['state'] == 'EXPIRED':
-                    print('Session got expired. Aborting...')
-                    sys.exit(0)
+                    raise DKBRoboError('Session expired')
             else:
-                print('Timeout during session confirmation. Aborting...')
-                sys.exit(0)
-            time.sleep(2)
+                raise DKBRoboError('Timeout during session confirmation')
+
+            time.sleep(1.5)
+        else:
+            raise DKBRoboError("No session confirmation after 120 polls")
 
         post_data = {'$event': 'next', 'XSRFPreventionToken': xsrf_token}
         self.dkb_br.post(url=self.base_url + '/DkbTransactionBanking/content/LoginWithBoundDevice/LoginWithBoundDeviceProcess/mfaConfirmLogin.xhtml', data=post_data)
-
-        return login_confirmed
 
     def logout(self):
         """ logout from DKB banking area
@@ -611,7 +581,7 @@ class DKBRobo(object):
         returns:
             None
         """
-        print_debug(self.debug, 'DKBRobo.logout()\n')
+        logger.debug( 'DKBRobo.logout()\n')
         logout_url = self.base_url + '/' + 'DkbTransactionBanking/banner.xhtml?$event=logout'
         self.dkb_br.open(logout_url)
 
@@ -624,10 +594,10 @@ class DKBRobo(object):
         returns:
            self.dkb_br - instance
         """
-        print_debug(self.debug, 'DKBRobo.new_instance()\n')
+        logger.debug( 'DKBRobo.new_instance()\n')
         # create browser and cookiestore objects
         self.dkb_br = mechanicalsoup.StatefulBrowser()
-        dkb_cj = cookielib.LWPCookieJar()
+        dkb_cj = cookiejar.LWPCookieJar()
         self.dkb_br.set_cookiejar = dkb_cj
 
         # configure browser
@@ -638,11 +608,11 @@ class DKBRobo(object):
         self.dkb_br.addheaders = [('User-agent', 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.2.8) Gecko/20100722 Firefox/3.6.8 GTB7.1 (.NET CLR 3.5.30729)'), ('Accept-Language', 'en-US,en;q=0.5'), ('Connection', 'keep-alive')]
 
         # initialize some cookies to fool dkb
-        dkb_ck = cookielib.Cookie(version=0, name='javascript', value='enabled', port=None, port_specified=False, domain='www.dkb.de', domain_specified=False, domain_initial_dot=False, path='/', path_specified=True, secure=False, expires=None, discard=True, comment=None, comment_url=None, rest={'HttpOnly': None}, rfc2109=False)
+        dkb_ck = cookiejar.Cookie(version=0, name='javascript', value='enabled', port=None, port_specified=False, domain='www.dkb.de', domain_specified=False, domain_initial_dot=False, path='/', path_specified=True, secure=False, expires=None, discard=True, comment=None, comment_url=None, rest={'HttpOnly': None}, rfc2109=False)
         dkb_cj.set_cookie(dkb_ck)
-        dkb_ck = cookielib.Cookie(version=0, name='BRSINFO_browserPlugins', value='NPSWF32_25_0_0_127.dll%3B', port=None, port_specified=False, domain='www.dkb.de', domain_specified=False, domain_initial_dot=False, path='/', path_specified=True, secure=False, expires=None, discard=True, comment=None, comment_url=None, rest={'HttpOnly': None}, rfc2109=False)
+        dkb_ck = cookiejar.Cookie(version=0, name='BRSINFO_browserPlugins', value='NPSWF32_25_0_0_127.dll%3B', port=None, port_specified=False, domain='www.dkb.de', domain_specified=False, domain_initial_dot=False, path='/', path_specified=True, secure=False, expires=None, discard=True, comment=None, comment_url=None, rest={'HttpOnly': None}, rfc2109=False)
         dkb_cj.set_cookie(dkb_ck)
-        dkb_ck = cookielib.Cookie(version=0, name='BRSINFO_screen', value='width%3D1600%3Bheight%3D900%3BcolorDepth%3D24', port=None, port_specified=False, domain='www.dkb.de', domain_specified=False, domain_initial_dot=False, path='/', path_specified=True, secure=False, expires=None, discard=True, comment=None, comment_url=None, rest={'HttpOnly': None}, rfc2109=False)
+        dkb_ck = cookiejar.Cookie(version=0, name='BRSINFO_screen', value='width%3D1600%3Bheight%3D900%3BcolorDepth%3D24', port=None, port_specified=False, domain='www.dkb.de', domain_specified=False, domain_initial_dot=False, path='/', path_specified=True, secure=False, expires=None, discard=True, comment=None, comment_url=None, rest={'HttpOnly': None}, rfc2109=False)
         dkb_cj.set_cookie(dkb_ck)
 
         return self.dkb_br
@@ -659,7 +629,7 @@ class DKBRobo(object):
             - amount - amount
             - text - text
         """
-        print_debug(self.debug, 'DKBRobo.parse_account_transactions()\n')
+        logger.debug( 'DKBRobo.parse_account_transactions()\n')
         # create empty list
         transaction_list = []
 
@@ -710,7 +680,7 @@ class DKBRobo(object):
             - amount - amount
             - text - text
         """
-        print_debug(self.debug, 'DKBRobo.parse_cc_transactions()\n')
+        logger.debug( 'DKBRobo.parse_cc_transactions()\n')
         # parse the lines to get all account infos
         # soup = BeautifulSoup(transactions, "html5lib")
 
@@ -751,7 +721,7 @@ class DKBRobo(object):
             - link to details
             - link to transactions
         """
-        print_debug(self.debug, 'DKBRobo.parse_overview()\n')
+        logger.debug( 'DKBRobo.parse_overview()\n')
         # get account information
         overview_dic = {}
         # to_remove = 0
@@ -828,7 +798,7 @@ class DKBRobo(object):
                 - documents
                     - name of document -> document link
         """
-        print_debug(self.debug, 'DKBRobo.scan_postbox()\n')
+        logger.debug( 'DKBRobo.scan_postbox()\n')
         pb_url = self.base_url + '/banking/postfach'
         self.dkb_br.open(pb_url)
         soup = self.dkb_br.get_current_page()
@@ -857,7 +827,7 @@ class DKBRobo(object):
             link_name - link_name
             url - download url
         """
-        print_debug(self.debug, 'DKBRobo.update_downloadstate({0}, {1})\n'.format(link_name, url))
+        logger.debug( 'DKBRobo.update_downloadstate({0}, {1})\n'.format(link_name, url))
 
         # get row number to be marked as read
         row_num = parse.parse_qs(parse.urlparse(url).query)['row'][0]
