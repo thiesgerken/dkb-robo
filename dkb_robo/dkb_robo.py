@@ -317,12 +317,7 @@ class DKBRobo(object):
         """ get finanical statement """
         print_debug(self.debug, 'DKBRobo.get_financial_statement()\n')
 
-        if self.tan_insert:
-            statement_url = self.base_url + '/DkbTransactionBanking/content/banking/financialstatus/FinancialComposite/FinancialStatus.xhtml?$event=init'
-        else:
-            statement_url = self.base_url + '/DkbTransactionBanking/content/LoginWithBoundDevice/LoginWithBoundDeviceProcess/confirmLogin.xhtml'
-
-        self.dkb_br.open(statement_url)
+        self.dkb_br.open(self.base_url + '/DkbTransactionBanking/content/banking/financialstatus/FinancialComposite/FinancialStatus.xhtml?$event=init')
         soup = self.dkb_br.get_current_page()
         return soup
 
@@ -582,19 +577,19 @@ class DKBRobo(object):
             poll_id = int(round(time.time() * 1000))
 
         # poll url
-        poll_url = self.base_url + '/DkbTransactionBanking/content/LoginWithBoundDevice/LoginWithBoundDeviceProcess/confirmLogin.xhtml'
+        poll_url = self.base_url + '/DkbTransactionBanking/content/LoginWithBoundDevice/LoginWithBoundDeviceProcess/mfaConfirmLogin.xhtml?$event=pollingVerification&$ignore.request=true'
         login_confirmed = False
         while not login_confirmed:
             poll_id += 1
             # add id to pollurl
-            url = poll_url + '?$event=pollingVerification&_=' + str(poll_id)
+            url = poll_url + '&_=' + str(poll_id)
             result = self.dkb_br.open(url).json()
-            if 'guiState' in result:
-                print_debug(self.debug, 'poll(id: {0} status: {1}\n'.format(poll_id, result['guiState']))
-                if result['guiState'] == 'MAP_TO_EXIT':
+            if 'state' in result:
+                print_debug(self.debug, 'poll(id: {0} status: {1}\n'.format(poll_id, result['state']))
+                if result['state'] == 'PROCESSED':
                     print_debug(self.debug, 'session got confirmed...\n')
                     login_confirmed = True
-                elif result['guiState'] == 'EXPIRED':
+                elif result['state'] == 'EXPIRED':
                     print('Session got expired. Aborting...')
                     sys.exit(0)
             else:
@@ -603,7 +598,7 @@ class DKBRobo(object):
             time.sleep(2)
 
         post_data = {'$event': 'next', 'XSRFPreventionToken': xsrf_token}
-        self.dkb_br.post(url=poll_url, data=post_data)
+        self.dkb_br.post(url=self.base_url + '/DkbTransactionBanking/content/LoginWithBoundDevice/LoginWithBoundDeviceProcess/mfaConfirmLogin.xhtml', data=post_data)
 
         return login_confirmed
 
